@@ -1,0 +1,559 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  buyer
+  creator
+  admin
+}
+
+enum UserStatus {
+  active
+  suspended
+  deleted
+}
+
+enum CreatorStatus {
+  pending
+  active
+  suspended
+}
+
+enum ContentType {
+  photo
+  video
+  audio
+  document
+  course
+  bundle
+}
+
+enum PricingModel {
+  free
+  purchase
+  subscription
+  both
+}
+
+enum ContentStatus {
+  draft
+  published
+  scheduled
+  deleted
+}
+
+enum ContentVisibility {
+  public
+  unlisted
+  subscribers_only
+}
+
+enum PaymentMethod {
+  stripe
+  ton
+  bank
+  paypal
+}
+
+enum TransactionStatus {
+  pending
+  completed
+  refunded
+  failed
+}
+
+enum TransactionType {
+  purchase
+  subscription
+  payout
+  refund
+  affiliate
+}
+
+enum SubscriptionStatus {
+  active
+  expired
+  canceled
+}
+
+enum PayoutStatus {
+  pending
+  processing
+  completed
+  failed
+}
+
+enum CommentStatus {
+  published
+  flagged
+  deleted
+}
+
+enum ReviewStatus {
+  published
+  flagged
+  deleted
+}
+
+enum RequestStatus {
+  pending
+  accepted
+  in_progress
+  delivered
+  completed
+  declined
+  canceled
+}
+
+enum ReferralStatus {
+  pending
+  paid
+  invalid
+}
+
+enum ReportType {
+  spam
+  abuse
+  copyright
+  inappropriate
+}
+
+enum ReportStatus {
+  open
+  in_progress
+  resolved
+  closed
+}
+
+model User {
+  id                String    @id @default(uuid())
+  username          String    @unique
+  email             String    @unique
+  phone             String?   @unique
+  passwordHash      String
+  role              UserRole  @default(buyer)
+  status            UserStatus @default(active)
+  emailVerified     Boolean   @default(false)
+  phoneVerified     Boolean   @default(false)
+  twoFactorEnabled  Boolean   @default(false)
+  twoFactorSecret   String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  lastLoginAt       DateTime?
+
+  profile           UserProfile?
+  creatorProfile    CreatorProfile?
+  content           Content[]
+  purchases         Purchase[]
+  subscriptionsFrom Subscription[] @relation("SubscriberRelation")
+  subscriptionsTo   Subscription[] @relation("CreatorSubscriptionRelation")
+  transactions      Transaction[]
+  payouts           Payout[]
+  comments          Comment[]
+  likes             Like[]
+  notifications     Notification[]
+  reviews           Review[]
+  messagesSent      Message[] @relation("SenderRelation")
+  messagesReceived  Message[] @relation("RecipientRelation")
+  requestsBuyer     CustomRequest[] @relation("BuyerRequestRelation")
+  requestsCreator   CustomRequest[] @relation("CreatorRequestRelation")
+  affiliate         Affiliate?
+  referrals         Referral[]
+  reportsMade       Report[] @relation("ReporterRelation")
+  reportsReceived   Report[] @relation("ReportedUserRelation")
+  auditLogs         AuditLog[]
+  sessions          Session[]
+
+  @@index([email])
+  @@index([username])
+  @@index([phone])
+}
+
+model UserProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  displayName     String
+  bio             String?
+  profilePhotoUrl String?
+  bannerImageUrl  String?
+  location        Json?
+  websiteUrl      String?
+  socialLinks     Json?
+  preferences     Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model CreatorProfile {
+  id                  String        @id @default(uuid())
+  userId              String        @unique
+  creatorStatus       CreatorStatus @default(pending)
+  verificationBadge   Boolean       @default(false)
+  subscriptionPrice   Decimal?      @db.Decimal(10, 2)
+  subscriptionEnabled Boolean       @default(false)
+  commissionRate      Decimal       @default(0.15) @db.Decimal(5, 4)
+  totalSubscribers    Int           @default(0)
+  totalRevenue        Decimal       @default(0) @db.Decimal(12, 2)
+  ratingAverage       Decimal?      @db.Decimal(3, 2)
+  ratingCount         Int           @default(0)
+  creatorSince        DateTime      @default(now())
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([creatorStatus])
+}
+
+model Content {
+  id                String            @id @default(uuid())
+  creatorId         String
+  title             String
+  description       String
+  contentType       ContentType
+  category          String
+  tags              String[]
+  pricingModel      PricingModel
+  price             Decimal?          @db.Decimal(10, 2)
+  status            ContentStatus     @default(draft)
+  visibility        ContentVisibility @default(public)
+  publishAt         DateTime?
+  filePaths         Json
+  thumbnailUrl      String
+  duration          Int?
+  watermarkEnabled  Boolean           @default(false)
+  watermarkSettings Json?
+  commentsEnabled   Boolean           @default(true)
+  ageRestricted     Boolean           @default(false)
+  viewCount         Int               @default(0)
+  purchaseCount     Int               @default(0)
+  likeCount         Int               @default(0)
+  version           Int               @default(1)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  creator   User       @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  purchases Purchase[]
+  comments  Comment[]
+  likes     Like[]
+  reviews   Review[]
+  reports   Report[]
+
+  @@index([creatorId])
+  @@index([status])
+  @@index([category])
+  @@index([createdAt])
+  @@index([creatorId, createdAt])
+  @@fulltext([title, description])
+}
+
+model Purchase {
+  id                 String            @id @default(uuid())
+  buyerId            String
+  contentId          String
+  creatorId          String
+  amount             Decimal           @db.Decimal(10, 2)
+  platformCommission Decimal           @db.Decimal(10, 2)
+  creatorEarnings    Decimal           @db.Decimal(10, 2)
+  paymentMethod      PaymentMethod
+  paymentId          String
+  status             TransactionStatus @default(pending)
+  discountCode       String?
+  discountAmount     Decimal           @default(0) @db.Decimal(10, 2)
+  purchasedAt        DateTime          @default(now())
+  refundedAt         DateTime?
+
+  buyer     User      @relation(fields: [buyerId], references: [id])
+  content   Content   @relation(fields: [contentId], references: [id])
+  referrals Referral[]
+
+  @@index([buyerId])
+  @@index([contentId])
+  @@index([creatorId])
+  @@index([purchasedAt])
+}
+
+model Subscription {
+  id             String             @id @default(uuid())
+  subscriberId   String
+  creatorId      String
+  status         SubscriptionStatus @default(active)
+  monthlyPrice   Decimal            @db.Decimal(10, 2)
+  startDate      DateTime           @default(now())
+  expirationDate DateTime
+  canceledAt     DateTime?
+  totalPaid      Decimal            @default(0) @db.Decimal(10, 2)
+  renewalCount   Int                @default(0)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  subscriber User @relation("SubscriberRelation", fields: [subscriberId], references: [id])
+  creator    User @relation("CreatorSubscriptionRelation", fields: [creatorId], references: [id])
+
+  @@index([subscriberId])
+  @@index([creatorId])
+  @@index([status])
+  @@index([expirationDate])
+}
+
+model Transaction {
+  id            String            @id @default(uuid())
+  userId        String
+  type          TransactionType
+  amount        Decimal           @db.Decimal(10, 2)
+  currency      String            @default("USD")
+  paymentMethod PaymentMethod
+  paymentId     String
+  status        TransactionStatus @default(pending)
+  metadata      Json?
+  createdAt     DateTime          @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([paymentId])
+}
+
+model Payout {
+  id          String        @id @default(uuid())
+  creatorId   String
+  amount      Decimal       @db.Decimal(10, 2)
+  method      PaymentMethod
+  destination String
+  status      PayoutStatus  @default(pending)
+  requestedAt DateTime      @default(now())
+  completedAt DateTime?
+  instant     Boolean       @default(false)
+  fee         Decimal       @default(0) @db.Decimal(10, 2)
+  createdAt   DateTime      @default(now())
+
+  creator User @relation(fields: [creatorId], references: [id])
+
+  @@index([creatorId])
+  @@index([status])
+  @@index([requestedAt])
+}
+
+model Comment {
+  id        String        @id @default(uuid())
+  contentId String
+  userId    String
+  parentId  String?
+  text      String
+  likeCount Int           @default(0)
+  status    CommentStatus @default(published)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  content Content   @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  user    User      @relation(fields: [userId], references: [id])
+  parent  Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies Comment[] @relation("CommentReplies")
+  reports Report[]
+
+  @@index([contentId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Like {
+  id        String   @id @default(uuid())
+  userId    String
+  contentId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id])
+  content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contentId])
+  @@index([userId])
+  @@index([contentId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String
+  title     String
+  message   String
+  link      String?
+  read      Boolean  @default(false)
+  data      Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([read])
+  @@index([createdAt])
+}
+
+model Review {
+  id               String       @id @default(uuid())
+  reviewerId       String
+  contentId        String?
+  creatorId        String?
+  rating           Int
+  reviewText       String?
+  anonymous        Boolean      @default(false)
+  images           String[]
+  helpfulCount     Int          @default(0)
+  verifiedPurchase Boolean      @default(false)
+  status           ReviewStatus @default(published)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  reviewer User     @relation(fields: [reviewerId], references: [id])
+  content  Content? @relation(fields: [contentId], references: [id])
+
+  @@index([reviewerId])
+  @@index([contentId])
+  @@index([creatorId])
+}
+
+model Message {
+  id            String   @id @default(uuid())
+  senderId      String
+  recipientId   String
+  messageText   String
+  attachmentUrl String?
+  paid          Boolean  @default(false)
+  price         Decimal? @db.Decimal(10, 2)
+  read          Boolean  @default(false)
+  replied       Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  sender    User @relation("SenderRelation", fields: [senderId], references: [id])
+  recipient User @relation("RecipientRelation", fields: [recipientId], references: [id])
+
+  @@index([senderId])
+  @@index([recipientId])
+  @@index([createdAt])
+}
+
+model CustomRequest {
+  id             String        @id @default(uuid())
+  buyerId        String
+  creatorId      String
+  description    String
+  budget         Decimal?      @db.Decimal(10, 2)
+  deadline       DateTime?
+  attachments    Json?
+  status         RequestStatus @default(pending)
+  agreedPrice    Decimal?      @db.Decimal(10, 2)
+  agreedTimeline DateTime?
+  deliveredAt    DateTime?
+  completedAt    DateTime?
+  revisionCount  Int           @default(0)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  buyer   User @relation("BuyerRequestRelation", fields: [buyerId], references: [id])
+  creator User @relation("CreatorRequestRelation", fields: [creatorId], references: [id])
+
+  @@index([buyerId])
+  @@index([creatorId])
+  @@index([status])
+}
+
+model Affiliate {
+  id               String     @id @default(uuid())
+  userId           String     @unique
+  referralCode     String     @unique
+  totalClicks      Int        @default(0)
+  totalConversions Int        @default(0)
+  totalEarned      Decimal    @default(0) @db.Decimal(10, 2)
+  availableBalance Decimal    @default(0) @db.Decimal(10, 2)
+  createdAt        DateTime   @default(now())
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referrals Referral[]
+
+  @@index([referralCode])
+}
+
+model Referral {
+  id               String          @id @default(uuid())
+  affiliateId      String
+  referredUserId   String
+  purchaseId       String?
+  commissionAmount Decimal         @db.Decimal(10, 2)
+  status           ReferralStatus  @default(pending)
+  clickedAt        DateTime        @default(now())
+  convertedAt      DateTime?
+
+  affiliate     Affiliate @relation(fields: [affiliateId], references: [id])
+  referredUser  User      @relation(fields: [referredUserId], references: [id])
+  purchase      Purchase? @relation(fields: [purchaseId], references: [id])
+
+  @@index([affiliateId])
+  @@index([referredUserId])
+}
+
+model Report {
+  id                 String       @id @default(uuid())
+  reporterId         String
+  reportedUserId     String?
+  reportedContentId  String?
+  reportedCommentId  String?
+  type               ReportType
+  reason             String
+  status             ReportStatus @default(open)
+  assignedTo         String?
+  resolution         String?
+  createdAt          DateTime     @default(now())
+  resolvedAt         DateTime?
+
+  reporter        User     @relation("ReporterRelation", fields: [reporterId], references: [id])
+  reportedUser    User?    @relation("ReportedUserRelation", fields: [reportedUserId], references: [id])
+  reportedContent Content? @relation(fields: [reportedContentId], references: [id])
+  reportedComment Comment? @relation(fields: [reportedCommentId], references: [id])
+
+  @@index([reporterId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  adminId    String
+  action     String
+  targetType String
+  targetId   String
+  details    Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  admin User @relation(fields: [adminId], references: [id])
+
+  @@index([adminId])
+  @@index([createdAt])
+}
+
+model Session {
+  id         String   @id @default(uuid())
+  userId     String
+  token      String   @unique
+  deviceInfo Json?
+  ipAddress  String?
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+}
