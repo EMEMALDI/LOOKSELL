@@ -1,0 +1,31 @@
+{
+  "name": "looksell",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Digital content marketplace platform",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "services/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "db:generate": "cd packages/database && npm run generate",
+    "db:migrate": "cd packages/database && npm run migrate",
+    "db:studio": "cd packages/database && npm run studio"
+  },
+  "devDependencies": {
+    "turbo": "^1.11.0",
+    "prettier": "^3.1.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
